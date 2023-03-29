@@ -77,11 +77,6 @@ SELECT surname, firstname FROM `Members`
 ORDER BY joindate DESC 
 LIMIT 1
 
-**AND TRYING NOT TO USE LIMIT CLAUSE -- BUT CODE NOT WORKING***
-
-SELECT surname, firstname FROM `Members` 
-WHERE joindate IS MAX(STRFTIME("%Y-%m", joindate))
-
 
 
 /* Q7: Produce a list of all members who have used a tennis court.
@@ -108,7 +103,7 @@ facility, the name of the member formatted as a single column, and the cost.
 Order by descending cost, and do not use any subqueries. */
 
 SELECT name AS facility_name, concat(surname, ', ', firstname) AS member_name,
-(CASE WHEN memid > 0 THEN membercost ELSE guestcost END) as cost
+(CASE WHEN memid > 0 THEN membercost*slots ELSE guestcost*slots END) as cost
 FROM `Members`
 INNER JOIN `Bookings` 
 USING (memid)
@@ -118,20 +113,23 @@ WHERE starttime LIKE "2012-09-14%" AND (guestcost > 30 OR membercost > 30)
 ORDER BY cost DESC
 
 
-
 /* Q9: This time, produce the same result as in Q8, but using a subquery. */
 
 
-*****THIS IS NOT WORKING***
-
-SELECT concat(surname, ', ', firstname) AS member_name,
-(CASE WHEN memid > 0 THEN membercost ELSE guestcost END) as cost
-FROM `Members`
-WHERE memid, guestcost, membercost IN 
-			(SELECT memid, guestcost, membercost 
-             FROM `Bookings` WHERE (guestcost > 30 OR membercost > 30)
-             AND starttime LIKE "2012-09-14%")
+SELECT concat(surname, ', ', firstname) AS member_name, name AS facility, cost
+FROM
+	(SELECT firstname, surname, name, starttime,
+     CASE WHEN firstname = 'GUEST' THEN guestcost*slots ELSE membercost*slots END AS cost
+     FROM `Members` AS members
+     INNER JOIN `Bookings` AS bookings
+     ON members.memid = bookings.memid
+     INNER JOIN `Facilities` AS facilities
+     ON bookings.facid = facilities.facid) AS inner_table
+WHERE starttime >= '2012-09-14' AND starttime < '2012-09-15'
+AND cost > 30
 ORDER BY cost DESC
+
+
 
 
 
@@ -145,20 +143,19 @@ QUESTIONS:
 The output of facility name and total revenue, sorted by revenue. Remember
 that there's a different cost for guests and members! */
 
-***THIS IS NOT WORKING CORRECTLY***
 
-        SELECT f.name, ((SUM(membercost) + SUM(guestcost)) - monthlymaintenance) AS total_revenue
-        FROM facilities AS f
-        WHERE membercost IN
-            (SELECT membercost
-            FROM bookings
-            WHERE  memid > 0)
-        AND guestcost IN
-            (SELECT guestcost
-            FROM bookings
-            WHERE  memid = 0)
-        GROUP BY f.name
-        ORDER BY total_revenue
+SELECT name, inner_table.revenue
+FROM
+(SELECT name,
+SUM(CASE WHEN memid = 0 THEN guestcost * slots ELSE membercost * slots END) - monthlymaintenance AS revenue
+FROM bookings 
+INNER JOIN facilities
+ON bookings.facid = facilities.facid
+GROUP BY name) AS inner_table
+WHERE revenue < 1000
+ORDER BY revenue;
+
+
 
 
 /* Q11: Produce a report of members and who recommended them in alphabetic surname,firstname order */
